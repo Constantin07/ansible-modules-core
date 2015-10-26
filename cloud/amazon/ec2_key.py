@@ -91,6 +91,17 @@ EXAMPLES = '''
     state: absent
 '''
 
+RETURN = '''
+key:
+    description: a dictionary with public key fingerprint and name
+    returned: success
+    type: dictionary
+    sample: {
+	"fingerprint": "5c:9c:82:3f:78:de:64:33:c5:97:bd:bf:29:e1:dc:c2",
+	"name": "dev-web-key"
+    }
+'''
+
 try:
     import boto.ec2
     HAS_BOTO = True
@@ -99,6 +110,7 @@ except ImportError:
 
 import random
 import string
+import time
 
 
 def main():
@@ -130,8 +142,11 @@ def main():
     ec2 = ec2_connect(module)
 
     # find the key if present
-    key = ec2.get_key_pair(name)
-
+    try:
+	key = ec2.get_key_pair(name)
+    except boto.exception.BotoServerError, e:
+	module.fail_json(msg = "%s: %s" % (e.error_code, e.error_message))
+    
     # Ensure requested key is absent
     if state == 'absent':
         if key:
@@ -166,23 +181,30 @@ def main():
                 # https://forums.aws.amazon.com/thread.jspa?messageID=352828
 
                 # find an unused name
-                test = 'empty'
-                while test:
-                    randomchars = [random.choice(string.ascii_letters + string.digits) for x in range(0,10)]
-                    tmpkeyname = "ansible-" + ''.join(randomchars)
-                    test = ec2.get_key_pair(tmpkeyname)
+                try:
+            	    test = 'empty'
+            	    while test:
+                	randomchars = [random.choice(string.ascii_letters + string.digits) for x in range(0,10)]
+                	tmpkeyname = "ansible-" + ''.join(randomchars)
+                	test = ec2.get_key_pair(tmpkeyname)
 
-                # create tmp key
-                tmpkey = ec2.import_key_pair(tmpkeyname, key_material)
-                # get tmp key fingerprint
-                tmpfingerprint = tmpkey.fingerprint
-                # delete tmp key
-                tmpkey.delete()
+            	    # create tmp key
+            	    tmpkey = ec2.import_key_pair(tmpkeyname, key_material)
+            	    # get tmp key fingerprint
+            	    tmpfingerprint = tmpkey.fingerprint
+            	    # delete tmp key
+            	    tmpkey.delete()
+		except boto.exception.BotoServerError, e:
+		    module.fail_json(msg = "%s: %s" % (e.error_code, e.error_message))
+
 
                 if key.fingerprint != tmpfingerprint:
                     if not module.check_mode:
-                        key.delete()
-                        key = ec2.import_key_pair(name, key_material)    
+                        try:
+                    	    key.delete()
+                    	    key = ec2.import_key_pair(name, key_material)
+                    	except boto.exception.BotoServerError, e:
+			    module.fail_json(msg = "%s: %s" % (e.error_code, e.error_message))
 
                         if wait:
                             start = time.time()
@@ -202,15 +224,18 @@ def main():
         else:
             '''no match found, create it'''
             if not module.check_mode:
-                if key_material:
-                    '''We are providing the key, need to import'''
-                    key = ec2.import_key_pair(name, key_material)
-                else:
-                    '''
-                    No material provided, let AWS handle the key creation and 
-                    retrieve the private key
-                    '''
-                    key = ec2.create_key_pair(name)
+                try:
+            	    if key_material:
+                	'''We are providing the key, need to import'''
+                	key = ec2.import_key_pair(name, key_material)
+            	    else:
+                	'''
+                	No material provided, let AWS handle the key creation and 
+                	retrieve the private key
+                	'''
+                	key = ec2.create_key_pair(name)
+                except boto.exception.BotoServerError, e:
+		    module.fail_json(msg = "%s: %s" % (e.error_code, e.error_message))
 
                 if wait:
                     start = time.time()
@@ -241,4 +266,5 @@ def main():
 from ansible.module_utils.basic import *
 from ansible.module_utils.ec2 import *
 
-main()
+if __name__ == '__main__':
+    main()
