@@ -105,6 +105,16 @@ tasks:
     - volumes
 '''
 
+RETURN = '''
+tags:
+    description: tags associated with resource
+    returned: list of tags when state=list option is specified
+    type: dictionary of key value pairs
+    sample: {
+	"Name": "webserbver"
+        "env": "dev"
+    }
+'''
 
 try:
     import boto.ec2
@@ -129,14 +139,18 @@ def main():
     resource = module.params.get('resource')
     tags = module.params.get('tags')
     state = module.params.get('state')
-  
+
     ec2 = ec2_connect(module)
-    
+
     # We need a comparison here so that we can accurately report back changed status.
     # Need to expand the gettags return format and compare with "tags" and then tag or detag as appropriate.
     filters = {'resource-id' : resource}
-    gettags = ec2.get_all_tags(filters=filters)
-   
+    
+    try:
+	gettags = ec2.get_all_tags(filters=filters)
+    except boto.exception.EC2ResponseError, e:
+	module.fail_json(msg = "%s: %s" % (e.error_code, e.error_message))
+
     dictadd = {}
     dictremove = {}
     baddict = {}
@@ -153,10 +167,14 @@ def main():
             for (key, value) in set(tags.items()): 
                 if (key, value) not in set(tagdict.items()):
                     dictadd[key] = value
-        tagger = ec2.create_tags(resource, dictadd)
-        gettags = ec2.get_all_tags(filters=filters)
+        try:
+    	    tagger = ec2.create_tags(resource, dictadd)
+	    gettags = ec2.get_all_tags(filters=filters)
+    	except boto.exception.EC2ResponseError, e:
+    	    module.fail_json(msg = "%s: %s" % (e.error_code, e.error_message))
+
         module.exit_json(msg="Tags %s created for resource %s." % (dictadd,resource), changed=True)
- 
+
     if state == 'absent':
         if not tags:
             module.fail_json(msg="tags argument is required when state is absent")
@@ -168,8 +186,12 @@ def main():
         for (key, value) in set(tags.items()):
             if (key, value) in set(tagdict.items()):
                     dictremove[key] = value
-        tagger = ec2.delete_tags(resource, dictremove)
-        gettags = ec2.get_all_tags(filters=filters)
+        try:
+    	    tagger = ec2.delete_tags(resource, dictremove)
+    	    gettags = ec2.get_all_tags(filters=filters)
+	except boto.exception.EC2ResponseError, e:
+    	    module.fail_json(msg = "%s: %s" % (e.error_code, e.error_message))
+
         module.exit_json(msg="Tags %s removed for resource %s." % (dictremove,resource), changed=True)
 
     if state == 'list':
