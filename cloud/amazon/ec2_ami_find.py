@@ -201,6 +201,11 @@ description:
     returned: when AMI found
     type: string
     sample: "test-server01"
+product_codes:
+    description: a list of product codes
+    returned: when AMI found
+    type: list of strings
+    sample: "2egwyrxmlqsjtt5228e327unx"
 hypervisor:
     description: type of hypervisor
     returned: when AMI found
@@ -226,11 +231,21 @@ owner_id:
     returned: when AMI found
     type: string
     sample: "435210894375"
+owner_alias:
+    description: owner alias of image
+    returned: when AMI found
+    type: string
+    sample: "aws-marketplace"
 platform:
     description: plaform of image
     returned: when AMI found
     type: string
     sample: null
+type:
+    description: image type
+    returned: when AMI found
+    type: string
+    sample: "machine"
 root_device_name:
     description: rood device name of image
     returned: when AMI found
@@ -260,6 +275,11 @@ virtualization_type:
     returned: when AMI found
     type: string
     sample: "hvm"
+sriov_net_support:
+    description: whether enhanced networking is supported by image, empty when it's not supported
+    returned: when AMI found
+    type: string
+    sample: "simple"
 '''
 
 try:
@@ -375,17 +395,21 @@ def main():
             'block_device_mapping': get_block_device_mapping(image),
             'creationDate': image.creationDate,
             'description': image.description,
+            'product_codes': image.product_codes,
             'hypervisor': image.hypervisor,
             'is_public': image.is_public,
             'location': image.location,
             'name': image.name,
             'owner_id': image.owner_id,
+            'owner_alias': image.owner_alias,
             'platform': image.platform,
+            'type': image.type,
             'root_device_name': image.root_device_name,
             'root_device_type': image.root_device_type,
             'state': image.state,
             'tags': image.tags,
             'virtualization_type': image.virtualization_type,
+            'sriov_net_support': image.sriov_net_support
         }
 
         if image.kernel_id:
