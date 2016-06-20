@@ -89,6 +89,15 @@ options:
         description:
           - A list of the names of action(s) to take when the alarm is in the 'ok' status
         required: false
+    actions_enabled:
+        description:
+          - Whether to enable or disable alarm actions.
+          - When disabled no notifications are sent for any actions.
+        required: false
+        default: "yes"
+        choices: ["yes", "no"]
+        version_added: "2.2"
+
 extends_documentation_fragment:
     - aws
     - ec2
@@ -111,9 +120,11 @@ EXAMPLES = '''
       description: "This will alarm when a bamboo slave's cpu usage average is lower than 5% for 15 minutes "
       dimensions: {'InstanceId':'i-XXX'}
       alarm_actions: ["action1","action2"]
-
+      actions_enabled: yes
 
 '''
+
+import json
 
 try:
     import boto.ec2.cloudwatch
@@ -140,6 +151,7 @@ def create_metric_alarm(connection, module):
     alarm_actions = module.params.get('alarm_actions')
     insufficient_data_actions = module.params.get('insufficient_data_actions')
     ok_actions = module.params.get('ok_actions')
+    actions_enabled = module.boolean(module.params.get('actions_enabled'))
 
     alarms = connection.describe_alarms(alarm_names=[name])
 
@@ -163,10 +175,12 @@ def create_metric_alarm(connection, module):
         )
         try:
             connection.create_alarm(alm)
+            if not actions_enabled:
+                connection.disable_alarm_actions([name])
             changed = True
             alarms = connection.describe_alarms(alarm_names=[name])
         except BotoServerError as e:
-            module.fail_json(msg=str(e))
+            module.fail_json(msg = "%s: %s" % (e.error_code, e.error_message))
 
     else:
         alarm = alarms[0]
@@ -197,11 +211,18 @@ def create_metric_alarm(connection, module):
                 changed = True
                 setattr(alarm, attr, module.params.get(attr))
 
+        if json.loads(getattr(alarm, 'actions_enabled')) != actions_enabled:
+            changed=True
+
         try:
             if changed:
                 connection.create_alarm(alarm)
+                if actions_enabled:
+                    connection.enable_alarm_actions([name])
+                else:
+                    connection.disable_alarm_actions([name])
         except BotoServerError as e:
-            module.fail_json(msg=str(e))
+            module.fail_json(msg = "%s: %s" % (e.error_code, e.error_message))
     result = alarms[0]
     module.exit_json(changed=changed, name=result.name,
         actions_enabled=result.actions_enabled,
@@ -233,7 +254,7 @@ def delete_metric_alarm(connection, module):
             connection.delete_alarms([name])
             module.exit_json(changed=True)
         except BotoServerError as e:
-            module.fail_json(msg=str(e))
+            module.fail_json(msg = "%s: %s" % (e.error_code, e.error_message))
     else:
         module.exit_json(changed=False)
 
@@ -256,6 +277,7 @@ def main():
             alarm_actions=dict(type='list'),
             insufficient_data_actions=dict(type='list'),
             ok_actions=dict(type='list'),
+            actions_enabled=dict(type='bool', default=True),
             state=dict(default='present', choices=['present', 'absent']),
            )
     )
