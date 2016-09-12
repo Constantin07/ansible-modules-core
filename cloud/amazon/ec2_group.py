@@ -370,7 +370,12 @@ def main():
                             grantGroup = groups[group_id]
 
                         if not module.check_mode:
-                            group.authorize(rule['proto'], rule['from_port'], rule['to_port'], thisip, grantGroup)
+                            try:
+                                group.authorize(rule['proto'], rule['from_port'], rule['to_port'], thisip, grantGroup)
+                            except boto.exception.EC2ResponseError as e:
+                                # Do not throw exception if the ingress rule already exists
+                                if 'InvalidPermission.Duplicate' in e.error_code:
+                                    pass
                         changed = True
 
         # Finally, remove anything left in the groupRules -- these will be defunct rules
@@ -422,13 +427,18 @@ def main():
                             grantGroup = groups[group_id].id
 
                         if not module.check_mode:
-                            ec2.authorize_security_group_egress(
-                                    group_id=group.id,
-                                    ip_protocol=rule['proto'],
-                                    from_port=rule['from_port'],
-                                    to_port=rule['to_port'],
-                                    src_group_id=grantGroup,
-                                    cidr_ip=thisip)
+                            try:
+                                ec2.authorize_security_group_egress(
+                                        group_id=group.id,
+                                        ip_protocol=rule['proto'],
+                                        from_port=rule['from_port'],
+                                        to_port=rule['to_port'],
+                                        src_group_id=grantGroup,
+                                        cidr_ip=thisip)
+                            except boto.exception.EC2ResponseError as e:
+                                # Do not throw exception if the egress rule already exists
+                                if 'InvalidPermission.Duplicate' in e.error_code:
+                                    pass
                         changed = True
         elif vpc_id:
             # when using a vpc, but no egress rules are specified,
